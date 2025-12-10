@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: irsa-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: irsa-webhook
+  namespace: irsa-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: irsa-webhook
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: irsa-webhook
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: irsa-webhook
+subjects:
+- kind: ServiceAccount
+  name: irsa-webhook
+  namespace: irsa-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: irsa-webhook
+  namespace: irsa-system
+spec:
+  selector:
+    app: irsa-webhook
+  ports:
+  - port: 443
+    targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irsa-webhook
+  namespace: irsa-system
+  labels:
+    app: irsa-webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: irsa-webhook
+  template:
+    metadata:
+      labels:
+        app: irsa-webhook
+    spec:
+      serviceAccountName: irsa-webhook
+      containers:
+      - name: webhook
+        image: your-registry/irsa-webhook:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8443
+          name: webhook
+        env:
+        - name: TLS_CERT_PATH
+          value: /etc/webhook/certs/tls.crt
+        - name: TLS_KEY_PATH
+          value: /etc/webhook/certs/tls.key
+        volumeMounts:
+        - name: webhook-certs
+          mountPath: /etc/webhook/certs
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: irsa-webhook-certs
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: irsa-webhook
+webhooks:
+- name: irsa.vultr.com
+  clientConfig:
+    service:
+      name: irsa-webhook
+      namespace: irsa-system
+      path: /mutate
+    caBundle: ${CA_BUNDLE} # Replace with base64-encoded CA certificate
+  rules:
+  - operations: ["CREATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
+  timeoutSeconds: 10
+  failurePolicy: Ignore # Change to Fail for production if needed
+  namespaceSelector:
+    matchExpressions:
+    - key: irsa-webhook
+      operator: NotIn
+      values: ["disabled"]
