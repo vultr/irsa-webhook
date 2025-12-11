@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-irsa
+  namespace: default
+  annotations:
+    vultr.com/role-arn: "arn:aws:iam::123456789012:role/test-role"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: default
+spec:
+  serviceAccountName: test-irsa
+  containers:
+  - name: busybox
+    image: busybox
+    command: ["sh", "-c", "env | grep AWS && ls -la /var/run/secrets/vultr.com/serviceaccount/ && sleep 3600"]

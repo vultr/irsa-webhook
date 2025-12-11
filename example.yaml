@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: example-app
+  namespace: default
+  annotations:
+    # Replace with actual IAM role ARN
+    vultr.com/role-arn: "arn:aws:iam::123456789012:role/example-app-role"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-app
+  namespace: default
+spec:
+  serviceAccountName: example-app
+  containers:
+  - name: aws-cli
+    image: amazon/aws-cli:latest
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo "Testing IRSA configuration..."
+        echo ""
+        echo "Environment variables:"
+        env | grep AWS
+        echo ""
+        echo "Token file contents:"
+        ls -la /var/run/secrets/vultr.com/serviceaccount/
+        echo ""
+        echo "Token (first 50 chars):"
+        head -c 50 /var/run/secrets/vultr.com/serviceaccount/token
+        echo ""
+        echo ""
+        echo "Attempting to assume role..."
+        aws sts get-caller-identity || echo "Failed to get caller identity (expected if IAM role trust is not configured)"
+        echo ""
+        echo "Sleeping for 1 hour..."
+        sleep 3600
+  restartPolicy: Never

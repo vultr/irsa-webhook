@@ -29,6 +29,7 @@ When a pod is created, the webhook:
 
 - Kubernetes 1.20+ (for projected service account tokens)
 - `kubectl` configured to access your cluster
+  - Deploy a VKE cluster and do `export KUBECONFIG=~/Downloads/vke-64c243de-eb0b-4084-93ae-6c386bef8978.yaml`
 - OpenSSL (for certificate generation)
 - Go 1.24+ (for building from source)
 
@@ -255,14 +256,3 @@ go build -o webhook main.go
                   │ (Get SA)   │
                   └────────────┘
 ```
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions welcome! Please ensure:
-- Code follows Go best practices
-- Add tests for new functionality
-- Update documentation as needed
