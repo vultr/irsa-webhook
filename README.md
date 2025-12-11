@@ -30,7 +30,7 @@ When a pod is created, the webhook:
 - Kubernetes 1.20+ (for projected service account tokens)
 - `kubectl` configured to access your cluster
 - OpenSSL (for certificate generation)
-- Go 1.21+ (for building from source)
+- Go 1.24+ (for building from source)
 
 ## Quick Start
 
