@@ -1,10 +1,11 @@
 # IRSA Mutating Admission Webhook for Kubernetes
 
-This webhook implements IAM Roles for Service Accounts (IRSA) for Kubernetes clusters, allowing pods to assume AWS IAM roles using projected service account tokens.
+This webhook implements IAM Roles for Service Accounts (IRSA) for Kubernetes clusters, allowing pods to assume Vultr IAM roles using projected service account tokens.
 
 ## Features
 
-- Automatically injects AWS credentials configuration into pods
+- Automatically injects Vultr credentials configuration into pods
+- Compatibility with AWS SDK
 - Uses projected service account tokens with custom audience
 - Supports multiple containers and init containers
 - Follows security best practices
@@ -255,4 +256,114 @@ go build -o webhook main.go
                   │ K8s API    │
                   │ (Get SA)   │
                   └────────────┘
+```
+
+## Complete Flow
+- Register your cluster's JWKS as an OIDC Issuer at `https://api.vultr.com/v2/oidc/issuer`
+  - For VKE clusters:
+  ```
+  {
+    "source": "vke",
+    "source_id": "a070d34b-8380-441a-8fb4-d5a9c4001226" #This is the id of your VKE cluster
+  }
+  ```
+  - For NON VKE clusters:
+  ```
+  {
+    "source": "external",
+    "uri": "https://64c243de-eb0b-4084-93ae-6c386bef8978.vultr-k8s.com:6443/openid/v1/jwks",
+    "kid": "Sf4VzjgTmm_pW91u5qZypZWwiac9_boRFPC5vEmuhCQ",
+    "kty": "RSA",
+    "n": "3nhZuoDdSSr6OvdnxfOiJKZoC3kcnuEqbJyxXx0ULZLld3rxOmY8w1cuVjNIOaQsZZzQ6qeR7Z315L-Cdi19SLJRcdPf4d0Nezj9pmE_C0VjyNa8w0ZeF23xgiSnE4-ZamLdPtmxWXGhyyBSc_3CRBo-yFdAYJrsmXT1jjm_DOFpI3ZnKqeK7zmG9pRK-OaXfIXw_PEAZ3scflUkv1tE_j21YnFYd8BSM_He_V4Wx3MRFEBqr9-NbVegsEaQsZU63G_BCxEQXHXXM1YJ9ubE29jvMUrSHNFrgLrAjQhXrwu-PpEU1ROwbG4G0FaWkxEzC2K2_gqVC-Q4g-eEYS73UQ",
+    "e": "AQAB",
+    "alg": "RS256",
+    "use": "sig"
+  }
+  ```
+- From this point you will be able to auth to the vultr API from inside your kubernetes cluster using the standard - See the file in this repo `test-oidc-issuer.yaml`
+- Deploy this irsa-webhook to your cluster
+- Pod->STS
+  - Now when when a pod is owned by a serviceAccount with the annotation `vultr.com/role-arn`, the pod will send a token issued by the cluster to the Vultr sts endpoint.
+- STS->Pod
+  - Vultr's STS endpoint will respond with tokens issued by Vultr that are injected into the pod for the application running in the pod to consume
+
+
+## The Full Flow with Both Tokens
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ YOUR CLUSTER                                                               │
+│                                                                            │
+│ Kubernetes API Server (configured with your issuer)                        │
+│ ├─ Generates TOKEN #1 (ServiceAccount JWT)                                 │
+│ │  Signed with: cluster's private key                                      │
+│ │  Claims:                                                                 │
+│ │    iss: "https://api.vultr.com/v2/oidc"                                  │
+│ │    aud: "vultr"                                                          │
+│ │    sub: "system:serviceaccount:default:test-sa"                          │
+│ └─ Mounts TOKEN #1 in pod at:                                              │
+│    /var/run/secrets/kubernetes.io/serviceaccount/token                     │
+│                                                                            │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ Pod: my-app                                                            │ │
+│ │                                                                        │ │
+│ │ 1. Application starts                                                  │ │
+│ │ 2. SDK reads TOKEN #1 from file                                        │ │
+│ │ 3. SDK calls Vultr STS with TOKEN #1                                   │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                             │
+TOKEN #1 (K8s JWT) sent to Vultr platform ────────────────────────────────────┘
+                             ↓
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ VULTR PLATFORM (api.vultr.com)                                             │
+│                                                                            │
+│ STS Service                                                                │
+│ ├─ Receives TOKEN #1 from pod                                              │
+│ ├─ Validates TOKEN #1:                                                     │
+│ │  └─ Fetches public key from /v2/oidc/jwks                                │
+│ │  └─ Verifies signature                                                   │
+│ │  └─ Checks issuer, audience, expiration                                  │
+│ │  └─ Checks role trust policy                                             │
+│ ├─ Generates TOKEN #2 (Temporary Credentials)                              │
+│ │  └─ AccessKeyId: VKAEXAMPLE123ABC                                        │
+│ │  └─ SecretAccessKey: secretKEY789XYZ                                     │
+│ │  └─ SessionToken: sessionTOKEN456DEF                                     │
+│ └─ Returns TOKEN #2 to pod                                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                             │
+TOKEN #2 (Temporary credentials) sent back to pod ────────────────────────────┘
+                             ↓
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ YOUR CLUSTER                                                               │
+│                                                                            │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ Pod: my-app                                                            │ │
+│ │                                                                        │ │
+│ │ 4. SDK receives TOKEN #2 (credentials)                                 │ │
+│ │ 5. SDK caches TOKEN #2                                                 │ │
+│ │ 6. SDK uses TOKEN #2 for all API calls:                                │ │
+│ │    - List buckets                                                      │ │
+│ │    - Upload objects                                                    │ │
+│ │    - etc.                                                              │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                             │
+All API calls use TOKEN #2 (credentials) ────────────────────────────────────┘
+                             ↓
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ VULTR PLATFORM APIs (api.vultr.com/v2/*)                                   │
+│                                                                            │
+│ Object Storage API, Compute API, etc.                                      │
+│ ├─ Receives request with TOKEN #2 (SessionToken)                           │
+│ ├─ Validates TOKEN #2 against session database                             │
+│ ├─ Checks permissions from role                                            │
+│ └─ Executes API operation                                                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+
 ```

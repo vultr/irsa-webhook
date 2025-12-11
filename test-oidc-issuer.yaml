@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-sa
+  namespace: default
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: default
+spec:
+  serviceAccountName: test-sa
+  containers:
+  - name: test-container
+    image: curlimages/curl:latest
+    command:
+      - sh
+      - -c
+      - |
+        echo "Service Account Token:"
+        cat /var/run/secrets/kubernetes.io/serviceaccount/token
+        echo -e "\n\nMaking API request to Vultr..."
+        curl -v -X GET https://api.vultr.com/v2/oidc/token \
+          -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+          -H "Content-Type: application/json"
+        echo -e "\n\nSleeping to keep pod alive for manual testing..."
+        sleep 3600
+    volumeMounts:
+    - name: token
+      mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      readOnly: true
+  volumes:
+  - name: token
+    projected:
+      sources:
+      - serviceAccountToken:
+          path: token
+          expirationSeconds: 3600
+  restartPolicy: Never
