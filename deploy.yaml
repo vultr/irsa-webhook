@@ -63,7 +63,7 @@ spec:
       serviceAccountName: irsa-webhook
       containers:
       - name: webhook
-        image: ewr.vultrcr.com/chansey/irsa-webhook:latest
+        image: your-registry/irsa-webhook:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8443
@@ -122,7 +122,7 @@ webhooks:
       name: irsa-webhook
       namespace: irsa-system
       path: /mutate
-    caBundle: ${CA_BUNDLE} # Replace with base64-encoded CA certificate
+    caBundle: CA_BUNDLE_PLACEHOLDER
   rules:
   - operations: ["CREATE"]
     apiGroups: [""]

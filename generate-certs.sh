@@ -29,7 +29,7 @@ openssl req -x509 -new -nodes -key ${CERT_DIR}/ca.key \
 openssl genrsa -out ${CERT_DIR}/tls.key 2048
 
 # Create certificate signing request
-cat > ${CERT_DIR}/csr.conf <<EOL
+cat > ${CERT_DIR}/csr.conf <<EOF
 [req]
 req_extensions = v3_req
 distinguished_name = req_distinguished_name
@@ -44,7 +44,7 @@ DNS.1 = ${SERVICE_NAME}
 DNS.2 = ${SERVICE_NAME}.${NAMESPACE}
 DNS.3 = ${SERVICE_NAME}.${NAMESPACE}.svc
 DNS.4 = ${SERVICE_NAME}.${NAMESPACE}.svc.cluster.local
-EOL
+EOF
 
 # Generate certificate signing request
 openssl req -new -key ${CERT_DIR}/tls.key \
@@ -65,19 +65,22 @@ openssl x509 -req -in ${CERT_DIR}/tls.csr \
 echo "Certificates generated successfully."
 
 # Create namespace if it doesn't exist
-kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
 # Create or update secret with certificates
 kubectl create secret tls ${SECRET_NAME} \
     --cert=${CERT_DIR}/tls.crt \
     --key=${CERT_DIR}/tls.key \
     --namespace=${NAMESPACE} \
-    --dry-run=client -o yaml | kubectl apply -f -
+    --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
 echo "Secret ${SECRET_NAME} created/updated in namespace ${NAMESPACE}"
 
 # Get CA bundle for webhook configuration
 CA_BUNDLE=$(cat ${CERT_DIR}/ca.crt | base64 | tr -d '\n')
+
+# Save CA bundle to file for deployment
+echo "${CA_BUNDLE}" > .ca-bundle.txt
 
 # Update MutatingWebhookConfiguration with CA bundle
 if kubectl get mutatingwebhookconfiguration ${WEBHOOK_CONFIG_NAME} &> /dev/null; then
@@ -86,10 +89,8 @@ if kubectl get mutatingwebhookconfiguration ${WEBHOOK_CONFIG_NAME} &> /dev/null;
         -p="[{'op': 'replace', 'path': '/webhooks/0/clientConfig/caBundle', 'value':'${CA_BUNDLE}'}]"
     echo "MutatingWebhookConfiguration ${WEBHOOK_CONFIG_NAME} updated with CA bundle"
 else
-    echo "MutatingWebhookConfiguration ${WEBHOOK_CONFIG_NAME} not found. Please update deploy.yaml with:"
-    echo "caBundle: ${CA_BUNDLE}"
+    echo "MutatingWebhookConfiguration not found yet. CA bundle saved to .ca-bundle.txt"
 fi
 
 echo ""
-echo "Setup complete! CA Bundle (for manual configuration):"
-echo "${CA_BUNDLE}"
+echo "Setup complete! CA Bundle saved to .ca-bundle.txt"

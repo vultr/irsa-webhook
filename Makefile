@@ -23,7 +23,12 @@ certs:
 
 # Deploy to Kubernetes
 deploy:
-	kubectl apply -f deploy.yaml
+	@if [ ! -f .ca-bundle.txt ]; then \
+		echo "Error: .ca-bundle.txt not found. Run 'make certs' first."; \
+		exit 1; \
+	fi
+	@CA_BUNDLE=$$(cat .ca-bundle.txt) && \
+	sed "s|CA_BUNDLE_PLACEHOLDER|$$CA_BUNDLE|g" deploy.yaml | kubectl apply -f -
 
 # Undeploy from Kubernetes
 undeploy:
