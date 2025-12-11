@@ -63,7 +63,7 @@ spec:
       serviceAccountName: irsa-webhook
       containers:
       - name: webhook
-        image: your-registry/irsa-webhook:latest
+        image: ewr.vultrcr.com/chansey/irsa-webhook:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8443
