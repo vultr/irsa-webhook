@@ -17,7 +17,7 @@ When a pod is created, the webhook:
 
 1. Extracts the ServiceAccount name from the pod spec
 2. Fetches the ServiceAccount from the Kubernetes API
-3. Checks for the `vultr.com/role-arn` annotation
+3. Checks for the `api.vultr.com/role` annotation
 4. If present, mutates the pod to inject:
    - **Environment Variables:**
      - `AWS_ROLE_ARN`: The IAM role ARN from the annotation
@@ -83,7 +83,7 @@ kubectl logs -n irsa-system -l app=irsa-webhook
 
 ### Annotate ServiceAccount
 
-To enable IRSA for a ServiceAccount, add the `vultr.com/role-arn` annotation:
+To enable IRSA for a ServiceAccount, add the `api.vultr.com/role` annotation:
 
 ```yaml
 apiVersion: v1
@@ -92,7 +92,7 @@ metadata:
   name: my-app
   namespace: default
   annotations:
-    vultr.com/role-arn: "arn:aws:iam::123456789012:role/my-app-role"
+    api.vultr.com/role: "775a6be6-45cd-4f19-94f5-6e4f96f093ec"
 ```
 
 ### Deploy a Pod
@@ -283,7 +283,7 @@ go build -o webhook main.go
 - From this point you will be able to auth to the vultr API from inside your kubernetes cluster using the standard - See the file in this repo `test-oidc-issuer.yaml`
 - Deploy this irsa-webhook to your cluster
 - Pod->STS
-  - Now when when a pod is owned by a serviceAccount with the annotation `vultr.com/role-arn`, the pod will send a token issued by the cluster to the Vultr sts endpoint.
+  - Now when when a pod is owned by a serviceAccount with the annotation `api.vultr.com/role`, the pod will send a token issued by the cluster to the Vultr sts endpoint.
 - STS->Pod
   - Vultr's STS endpoint will respond with tokens issued by Vultr that are injected into the pod for the application running in the pod to consume
 

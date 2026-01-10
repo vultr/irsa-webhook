@@ -4,7 +4,7 @@ metadata:
   name: test-irsa
   namespace: default
   annotations:
-    vultr.com/role-arn: "arn:aws:iam::123456789012:role/test-role"
+    api.vultr.com/role: "775a6be6-45cd-4f19-94f5-6e4f96f093ec"
 ---
 apiVersion: v1
 kind: Pod

@@ -54,7 +54,7 @@ kubectl get endpoints -n irsa-system irsa-webhook
 **Diagnosis:**
 ```bash
 # Check if ServiceAccount has annotation
-kubectl get sa <service-account-name> -o yaml | grep vultr.com/role-arn
+kubectl get sa <service-account-name> -o yaml | grep api.vultr.com/role
 
 # Check webhook configuration
 kubectl get mutatingwebhookconfiguration irsa-webhook -o yaml
@@ -68,7 +68,7 @@ kubectl logs -n irsa-system -l app=irsa-webhook --tail=100
 1. **ServiceAccount annotation missing:**
    ```bash
    kubectl annotate sa <service-account-name> \
-     vultr.com/role-arn="arn:aws:iam::123456789012:role/your-role"
+     api.vultr.com/role: "775a6be6-45cd-4f19-94f5-6e4f96f093ec"
    ```
 
 2. **Namespace excluded from webhook:**
@@ -81,7 +81,7 @@ kubectl logs -n irsa-system -l app=irsa-webhook --tail=100
    ```bash
    # Check webhook logs for incoming requests
    kubectl logs -n irsa-system -l app=irsa-webhook --tail=50
-   
+
    # Verify webhook configuration matches service
    kubectl get mutatingwebhookconfiguration irsa-webhook -o jsonpath='{.webhooks[0].clientConfig}'
    ```
@@ -146,7 +146,7 @@ kubectl get mutatingwebhookconfiguration irsa-webhook \
    ```bash
    CA_BUNDLE=$(kubectl get secret -n irsa-system irsa-webhook-certs \
      -o jsonpath='{.data.ca\.crt}')
-   
+
    kubectl patch mutatingwebhookconfiguration irsa-webhook \
      --type='json' \
      -p="[{'op': 'replace', 'path': '/webhooks/0/clientConfig/caBundle', 'value':'${CA_BUNDLE}'}]"
