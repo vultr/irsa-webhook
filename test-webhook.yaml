@@ -5,6 +5,7 @@ metadata:
   namespace: default
   annotations:
     api.vultr.com/role: "775a6be6-45cd-4f19-94f5-6e4f96f093ec"
+---
 apiVersion: v1
 kind: Pod
 metadata:

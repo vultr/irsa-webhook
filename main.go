@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 
@@ -26,6 +27,7 @@ const (
 	envAWSRoleArn             = "AWS_ROLE_ARN"
 	envAWSWebIdentityToken    = "AWS_WEB_IDENTITY_TOKEN_FILE"
 	envAWSSTSRegionalEndpoint = "AWS_STS_REGIONAL_ENDPOINTS"
+	envAWSEndpointUrlSTS      = "AWS_ENDPOINT_URL_STS"
 )
 
 var (
@@ -43,7 +45,43 @@ type JSONPatch struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
+type LogLevel int
+
+const (
+	LogInfo LogLevel = iota
+	LogDebug
+)
+
+var currentLogLevel = LogInfo
+
+func logInfo(format string, v ...interface{}) {
+	log.Printf("[INFO] "+format, v...)
+}
+
+func logDebug(format string, v ...interface{}) {
+	if currentLogLevel >= LogDebug {
+		log.Printf("[DEBUG] "+format, v...)
+	}
+}
+
+const alphaNum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func randomAlphaNum(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = alphaNum[rand.Intn(len(alphaNum))]
+	}
+	return string(b)
+}
+
 func main() {
+	switch os.Getenv("LOG_LEVEL") {
+	case "debug":
+		currentLogLevel = LogDebug
+	default:
+		currentLogLevel = LogInfo
+	}
+
 	// Create in-cluster Kubernetes client
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -86,14 +124,19 @@ func main() {
 		Handler:   mux,
 	}
 
-	log.Printf("Starting webhook server on port %s", port)
+	logInfo("Starting webhook server on port %s", port)
 	if err := httpServer.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
 
 func (ws *WebhookServer) handleMutate(w http.ResponseWriter, r *http.Request) {
+	handleMutateReqId := fmt.Sprintf("[handleMutate Request-Id %s]:", randomAlphaNum(6))
+
+	logDebug("%s New Request: method=%s path=%s content-length=%d", handleMutateReqId, r.Method, r.URL.Path, r.ContentLength)
+
 	if r.Method != http.MethodPost {
+		logDebug("%s HTTP Method != POST, returning %d Method Not Allowed", handleMutateReqId, http.StatusMethodNotAllowed)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -101,7 +144,7 @@ func (ws *WebhookServer) handleMutate(w http.ResponseWriter, r *http.Request) {
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Failed to read request body: %v", err)
+		logDebug("%s Failed to read request body: %v", handleMutateReqId, err)
 		http.Error(w, "Failed to read request", http.StatusBadRequest)
 		return
 	}
@@ -110,14 +153,14 @@ func (ws *WebhookServer) handleMutate(w http.ResponseWriter, r *http.Request) {
 	// Parse AdmissionReview request
 	admissionReview := &admissionv1.AdmissionReview{}
 	if err := json.Unmarshal(body, admissionReview); err != nil {
-		log.Printf("Failed to unmarshal admission review: %v", err)
+		logDebug("%s JSON parsing error: %v", handleMutateReqId, err)
 		http.Error(w, "Failed to parse admission review", http.StatusBadRequest)
 		return
 	}
 
 	// Validate request
 	if admissionReview.Request == nil {
-		log.Printf("Admission review request is nil")
+		logDebug("%s Admission review request is nil, returning %d Bad Request", handleMutateReqId, http.StatusBadRequest)
 		http.Error(w, "Invalid admission review request", http.StatusBadRequest)
 		return
 	}
@@ -138,7 +181,7 @@ func (ws *WebhookServer) handleMutate(w http.ResponseWriter, r *http.Request) {
 	// Marshal and send response
 	responseBytes, err := json.Marshal(responseAdmissionReview)
 	if err != nil {
-		log.Printf("Failed to marshal admission response: %v", err)
+		logDebug("%s Failed to marshal admission response: %v", handleMutateReqId, err)
 		http.Error(w, "Failed to create response", http.StatusInternalServerError)
 		return
 	}
@@ -146,9 +189,13 @@ func (ws *WebhookServer) handleMutate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(responseBytes)
+
+	logDebug("%s Successfully Returned AdmissionReview Response", handleMutateReqId)
 }
 
 func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	mutateReqId := fmt.Sprintf("[mutate Request-Id %s]:", randomAlphaNum(6))
+
 	// Create base response
 	response := &admissionv1.AdmissionResponse{
 		Allowed: true,
@@ -163,7 +210,7 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 	// Parse Pod from request
 	pod := &corev1.Pod{}
 	if err := json.Unmarshal(request.Object.Raw, pod); err != nil {
-		log.Printf("Failed to unmarshal pod: %v", err)
+		logDebug("%s Failed to unmarshal pod: %v", mutateReqId, err)
 		response.Allowed = false
 		response.Result = &metav1.Status{
 			Message: fmt.Sprintf("Failed to parse pod: %v", err),
@@ -171,8 +218,7 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 		return response
 	}
 
-	log.Printf("Processing pod: %s/%s, ServiceAccount: %s",
-		request.Namespace, pod.Name, pod.Spec.ServiceAccountName)
+	logDebug("%s Processing pod: %s/%s, ServiceAccount: %s", mutateReqId, request.Namespace, pod.Name, pod.Spec.ServiceAccountName)
 
 	// Get ServiceAccount name (default to "default" if not specified)
 	serviceAccountName := pod.Spec.ServiceAccountName
@@ -187,8 +233,7 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 		metav1.GetOptions{},
 	)
 	if err != nil {
-		log.Printf("Failed to fetch ServiceAccount %s/%s: %v",
-			request.Namespace, serviceAccountName, err)
+		logDebug("%s Failed to fetch ServiceAccount %s/%s: %v", mutateReqId, request.Namespace, serviceAccountName, err)
 		// Don't block pod creation if we can't fetch the SA
 		return response
 	}
@@ -196,17 +241,16 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 	// Check for role ARN annotation
 	roleArn, exists := serviceAccount.Annotations[roleArnAnnotation]
 	if !exists || roleArn == "" {
-		log.Printf("ServiceAccount %s/%s does not have %s annotation, skipping mutation",
-			request.Namespace, serviceAccountName, roleArnAnnotation)
+		logDebug("%s ServiceAccount %s/%s does not have %s annotation, skipping mutation", mutateReqId, request.Namespace, serviceAccountName, roleArnAnnotation)
 		return response
 	}
 
-	log.Printf("Found role ARN annotation: %s", roleArn)
+	logDebug("%s Found role ARN annotation: %s", mutateReqId, roleArn)
 
 	// Generate JSON patches to mutate the pod
 	patches, err := ws.generatePatches(pod, roleArn)
 	if err != nil {
-		log.Printf("Failed to generate patches: %v", err)
+		logDebug("%s Failed to generate patches: %v", mutateReqId, err)
 		response.Allowed = false
 		response.Result = &metav1.Status{
 			Message: fmt.Sprintf("Failed to generate patches: %v", err),
@@ -217,7 +261,7 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 	// Marshal patches to JSON
 	patchBytes, err := json.Marshal(patches)
 	if err != nil {
-		log.Printf("Failed to marshal patches: %v", err)
+		logDebug("%s Failed to marshal patches: %v", mutateReqId, err)
 		response.Allowed = false
 		response.Result = &metav1.Status{
 			Message: fmt.Sprintf("Failed to marshal patches: %v", err),
@@ -229,8 +273,7 @@ func (ws *WebhookServer) mutate(request *admissionv1.AdmissionRequest) *admissio
 	patchType := admissionv1.PatchTypeJSONPatch
 	response.PatchType = &patchType
 
-	log.Printf("Successfully generated %d patches for pod %s/%s",
-		len(patches), request.Namespace, pod.Name)
+	logInfo("%s Successfully patched pod %s/%s for service account '%s'", mutateReqId, request.Namespace, pod.Name, serviceAccountName)
 
 	return response
 }
@@ -338,7 +381,7 @@ func (ws *WebhookServer) generateContainerPatches(index int, roleArn string, con
 			Value: "regional",
 		},
 		{
-			Name:  "AWS_ENDPOINT_URL_STS",
+			Name:  envAWSEndpointUrlSTS,
 			Value: stsEndpoint,
 		},
 	}
