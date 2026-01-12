@@ -4,12 +4,7 @@ metadata:
   name: test-irsa
   namespace: default
   annotations:
-<<<<<<< Updated upstream
     api.vultr.com/role: "775a6be6-45cd-4f19-94f5-6e4f96f093ec"
-=======
-    vultr.com/role-arn: "1b0256a2-5b2b-48ad-939d-d7d2426679e0"
->>>>>>> Stashed changes
----
 apiVersion: v1
 kind: Pod
 metadata:

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	roleArnAnnotation         = "vultr.com/role-arn"
+	roleArnAnnotation         = "api.vultr.com/role"
 	tokenVolumeName           = "vultr-irsa-token"
 	tokenMountPath            = "/var/run/secrets/vultr.com/serviceaccount"
 	tokenFileName             = "token"
@@ -320,6 +320,9 @@ func (ws *WebhookServer) generateContainerPatches(index int, roleArn string, con
 		})
 	}
 
+	// Get STS endpoint from environment (set in deployment)
+	stsEndpoint := getEnv("STS_ENDPOINT", "https://api.vultr.com/v2/assumed-roles/compatibility/aws/sts")
+
 	// Add environment variables
 	envVars := []corev1.EnvVar{
 		{
@@ -333,6 +336,10 @@ func (ws *WebhookServer) generateContainerPatches(index int, roleArn string, con
 		{
 			Name:  envAWSSTSRegionalEndpoint,
 			Value: "regional",
+		},
+		{
+			Name:  "AWS_ENDPOINT_URL_STS",
+			Value: stsEndpoint,
 		},
 	}
 
