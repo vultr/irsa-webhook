@@ -13,7 +13,7 @@ RUN go mod download
 COPY cmd/ cmd/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o webhook main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o webhook ./cmd/
 
 # Use distroless as minimal runtime image
 FROM gcr.io/distroless/static:nonroot
