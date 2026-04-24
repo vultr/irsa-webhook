@@ -46,7 +46,7 @@ logs:
 
 # Test with example pod
 test-example:
-	kubectl apply -f example.yaml
+	kubectl apply -f examples/example.yaml
 	@echo "Waiting for pod to be ready..."
 	@kubectl wait --for=condition=Ready pod/example-app --timeout=60s || true
 	@echo ""
@@ -55,7 +55,7 @@ test-example:
 
 # Clean up test resources
 clean-example:
-	kubectl delete -f example.yaml --ignore-not-found
+	kubectl delete -f examples/example.yaml --ignore-not-found
 
 # Run Go tests
 go-test:
