@@ -1,7 +1,9 @@
 .PHONY: build push deploy certs test clean
 
-IMAGE_NAME ?= ewr.vultrcr.com/chansey/irsa-webhook
-IMAGE_TAG ?= latest
+REGISTRY ?= vultr
+IMAGE_NAME ?= irsa-webhook
+WEBHOOK_IMAGE ?= $(REGISTRY)/$(IMAGE_NAME):$(TAG)
+TAG ?= latest
 NAMESPACE ?= irsa-system
 
 # Build the Go binary
@@ -10,11 +12,15 @@ build:
 
 # Build Docker image
 docker-build:
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build -t $(WEBHOOK_IMAGE) .
 
 # Push Docker image
 docker-push:
-	docker push $(IMAGE_NAME):$(IMAGE_TAG)
+	docker push $(WEBHOOK_IMAGE)
+
+# Update container image in deploy.yaml
+set-manifest-image:
+	sed -i'' -e 's@image: .*irsa-webhook:.*@image: '"$(WEBHOOK_IMAGE)"'@' deploy.yaml
 
 # Generate TLS certificates
 certs:
@@ -69,7 +75,7 @@ deps:
 	go mod tidy
 
 # Complete build and deploy pipeline
-all: deps build docker-build docker-push certs deploy
+all: deps build docker-build docker-push set-manifest-image certs deploy
 
 # Check webhook status
 status:
@@ -99,21 +105,22 @@ restart:
 # Help
 help:
 	@echo "Available targets:"
-	@echo "  build          - Build Go binary"
-	@echo "  docker-build   - Build Docker image"
-	@echo "  docker-push    - Push Docker image"
-	@echo "  certs          - Generate TLS certificates"
-	@echo "  deploy         - Deploy to Kubernetes"
-	@echo "  undeploy       - Remove from Kubernetes"
-	@echo "  logs           - View webhook logs"
-	@echo "  test-example   - Deploy and test example pod"
-	@echo "  clean-example  - Remove example pod"
-	@echo "  go-test        - Run Go tests"
-	@echo "  fmt            - Format Go code"
-	@echo "  vet            - Run Go vet"
-	@echo "  deps           - Download dependencies"
-	@echo "  all            - Complete build and deploy"
-	@echo "  status         - Check webhook status"
-	@echo "  clean          - Remove all resources"
-	@echo "  restart        - Restart webhook deployment"
-	@echo "  help           - Show this help"
+	@echo " build             - Build Go binary"
+	@echo " docker-build      - Build Docker image"
+	@echo " docker-push       - Push Docker image"
+	@echo " set-manifest-image - Update image in deploy.yaml"
+	@echo " certs             - Generate TLS certificates"
+	@echo " deploy            - Deploy to Kubernetes"
+	@echo " undeploy          - Remove from Kubernetes"
+	@echo " logs              - View webhook logs"
+	@echo " test-example      - Deploy and test example pod"
+	@echo " clean-example     - Remove example pod"
+	@echo " go-test           - Run Go tests"
+	@echo " fmt               - Format Go code"
+	@echo " vet               - Run Go vet"
+	@echo " deps              - Download dependencies"
+	@echo " all               - Complete build and deploy"
+	@echo " status            - Check webhook status"
+	@echo " clean             - Remove all resources"
+	@echo " restart           - Restart webhook deployment"
+	@echo " help              - Show this help"
