@@ -3,7 +3,7 @@
 REGISTRY ?= vultr
 IMAGE_NAME ?= irsa-webhook
 WEBHOOK_IMAGE ?= $(REGISTRY)/$(IMAGE_NAME):$(TAG)
-TAG ?= latest
+TAG ?= v0.1.0
 NAMESPACE ?= irsa-system
 
 # Build the Go binary
