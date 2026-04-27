@@ -8,7 +8,7 @@ NAMESPACE ?= irsa-system
 
 # Build the Go binary
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o webhook main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o webhook cmd/main.go
 
 # Build Docker image
 docker-build:
