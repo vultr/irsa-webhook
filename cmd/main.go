@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -44,10 +45,19 @@ type JSONPatch struct {
 }
 
 func main() {
-	// Create in-cluster Kubernetes client
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Failed to create in-cluster config: %v", err)
+		kubeconfig := os.Getenv("KUBECONFIG")
+		if kubeconfig == "" {
+			log.Fatal("KUBECONFIG env var not set")
+		}
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			log.Fatalf("Failed to create kubernetes config from KUBECONFIG: %v", err)
+		}
+		log.Printf("Using kubeconfig from %s", kubeconfig)
+	} else {
+		log.Printf("Using in-cluster config")
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
@@ -69,7 +79,6 @@ func main() {
 	tlsKeyPath := getEnv("TLS_KEY_PATH", "/etc/webhook/certs/tls.key")
 	port := getEnv("PORT", "8443")
 
-	// Load TLS certificates
 	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
 	if err != nil {
 		log.Fatalf("Failed to load TLS certificates: %v", err)
